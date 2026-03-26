@@ -25,6 +25,7 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from torch import Tensor, nn
+from torch.nn.attention import SDPBackend, sdpa_kernel
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 # -----------------------------
@@ -652,14 +653,17 @@ class CausalSelfAttention(nn.Module):
             local_q_per_kv = self.local_attention_heads // self.local_kv_heads
             local_k = self.expand_kv_heads(local_k, local_q_per_kv)
             local_v = self.expand_kv_heads(local_v, local_q_per_kv)
-            y_local = F.scaled_dot_product_attention(
-                local_q,
-                local_k,
-                local_v,
-                attn_mask=self.local_mask(seqlen, x.device),
-                is_causal=False,
-                enable_gqa=False,
-            )
+            # The local branch uses a custom sliding-window mask, so it must opt into
+            # a backend that supports masked SDPA instead of the flash-only global path.
+            with sdpa_kernel([SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]):
+                y_local = F.scaled_dot_product_attention(
+                    local_q,
+                    local_k,
+                    local_v,
+                    attn_mask=self.local_mask(seqlen, x.device),
+                    is_causal=False,
+                    enable_gqa=False,
+                )
             y_parts.append(y_local)
         if self.local_attention_heads < self.num_heads:
             global_q = q[:, self.local_attention_heads :]
