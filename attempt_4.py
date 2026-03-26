@@ -84,7 +84,7 @@ class Hyperparameters:
     logit_chunk_tokens: int = int(os.environ.get("LOGIT_CHUNK_TOKENS", 0))
     logit_softcap: float = float(os.environ.get("LOGIT_SOFTCAP", 30.0))
     rope_base: float = float(os.environ.get("ROPE_BASE", 10000.0))
-    partial_rope_dim: int = int(os.environ.get("PARTIAL_ROPE_DIM", 64))
+    partial_rope_dim: int = int(os.environ.get("PARTIAL_ROPE_DIM", 48))
     local_attention_window: int = int(os.environ.get("LOCAL_ATTENTION_WINDOW", 16))
     qk_gain_init: float = float(os.environ.get("QK_GAIN_INIT", 1.5))
 
@@ -869,8 +869,8 @@ def eval_val(
     total_tokens = 0.0
     total_bytes = 0.0
     for batch_idx, batch_seq_start in enumerate(range(0, total_seqs, val_batch_seqs), start=1):
-        #if batch_idx > 2000:
-        #    break
+        if batch_idx > 2000:
+            break
         batch_seq_end = min(batch_seq_start + val_batch_seqs, total_seqs)
         raw_start = batch_seq_start * args.train_seq_len
         raw_end = batch_seq_end * args.train_seq_len + 1
