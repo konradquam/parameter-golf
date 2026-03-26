@@ -628,6 +628,11 @@ class CausalSelfAttention(nn.Module):
             self._local_mask_seq_len = seq_len
         return self._local_mask_cached
 
+    def expand_kv_heads(self, x: Tensor, q_per_kv: int) -> Tensor:
+        if q_per_kv == 1:
+            return x
+        return x.repeat_interleave(q_per_kv, dim=1)
+
     def forward(self, x: Tensor) -> Tensor:
         bsz, seqlen, dim = x.shape
         q = self.c_q(x).reshape(bsz, seqlen, self.num_heads, self.head_dim).transpose(1, 2)
@@ -644,13 +649,16 @@ class CausalSelfAttention(nn.Module):
             local_q = q[:, : self.local_attention_heads]
             local_k = k[:, : self.local_kv_heads]
             local_v = v[:, : self.local_kv_heads]
+            local_q_per_kv = self.local_attention_heads // self.local_kv_heads
+            local_k = self.expand_kv_heads(local_k, local_q_per_kv)
+            local_v = self.expand_kv_heads(local_v, local_q_per_kv)
             y_local = F.scaled_dot_product_attention(
                 local_q,
                 local_k,
                 local_v,
                 attn_mask=self.local_mask(seqlen, x.device),
                 is_causal=False,
-                enable_gqa=(self.local_kv_heads != self.local_attention_heads),
+                enable_gqa=False,
             )
             y_parts.append(y_local)
         if self.local_attention_heads < self.num_heads:
